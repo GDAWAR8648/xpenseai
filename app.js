@@ -174,76 +174,30 @@ function App() {
       return;
     }
     setSyncStatus("Sending magic link…");
-    if (authProvider === "firebase") {
-      if (!isFirebaseConfigured || !firebaseAuth) { toast_("Firebase config missing. Update app.js.", "error"); return; }
-      try {
-        const actionCodeSettings = { url: 'https://gdawar8648.github.io/xpenseai/', handleCodeInApp: true };
-        await firebaseAuth.sendSignInLinkToEmail(authEmail, actionCodeSettings);
-        // remember email to complete sign-in after redirect
-        localStorage.setItem('emailForSignIn', authEmail);
-        toast_("Check your email for the Firebase sign-in link.");
-        setSyncStatus("Firebase magic link sent. Check your email.");
-        return;
-      } catch (err) {
-        console.error('Firebase sendSignInLinkToEmail error:', err);
-        toast_("Unable to send Firebase sign-in link: " + (err?.message || err), "error");
-        setSyncStatus("Sign-in failed.");
-        return;
-      }
-    }
-    // default: supabase
-    if (!isSupabaseEnabled()) {
-      toast_("Supabase config is missing. Update app.js.", "error");
+    // Firebase-only mode (Supabase fallback removed)
+    if (!isFirebaseConfigured || !firebaseAuth) {
+      toast_("Firebase config missing or not initialized. Check console for errors.", "error");
+      setSyncStatus("Firebase not configured.");
       return;
     }
-    // Exponential backoff retry with jitter for transient email rate-limit/network errors
-    const maxAttempts = 5;
-    const baseDelay = 1000; // ms
-    let attempt = 0;
-    let lastError = null;
-    while (attempt < maxAttempts) {
-      attempt++;
-      try {
-        const redirect = window.location.origin || undefined;
-        const { error } = await supabaseClient.auth.signInWithOtp({ email: authEmail }, { redirectTo: redirect });
-        if (error) {
-          console.error("signInWithOtp error:", error);
-          lastError = error;
-          // If rate-limited (429) or network/transient, retry with backoff
-          const isRateLimit = error?.status === 429 || (String(error?.message || "").toLowerCase().includes("rate limit"));
-          const isTransient = !error?.status || (error?.status >= 500 && error?.status < 600) || isRateLimit;
-          if (!isTransient) {
-            const msg = "Unable to send sign-in link: " + (error.message || JSON.stringify(error));
-            toast_(msg, "error");
-            setSyncStatus("Sign-in failed.");
-            return;
-          }
-          // else fallthrough to retry
-        } else {
-          toast_("Check your email for the sign-in link.");
-          setSyncStatus("Magic link sent. Check your email.");
-          return;
-        }
-      } catch (err) {
-        console.error("signInWithOtp exception:", err);
-        lastError = err;
-        // treat as transient unless clearly client error
-      }
-
-      // compute backoff with jitter
-      const jitter = Math.floor(Math.random() * 300) + 100; // 100-399ms
-      const delay = Math.min(30000, baseDelay * Math.pow(2, attempt - 1)) + jitter;
-      setSyncStatus(`Retrying sign-in (${attempt}/${maxAttempts}) in ${Math.round(delay/1000)}s…`);
-      await new Promise(res => setTimeout(res, delay));
+    try {
+      console.log("Sending Firebase magic link to:", authEmail);
+      const actionCodeSettings = { url: 'https://gdawar8648.github.io/xpenseai/', handleCodeInApp: true };
+      await firebaseAuth.sendSignInLinkToEmail(authEmail, actionCodeSettings);
+      // remember email to complete sign-in after redirect
+      localStorage.setItem('emailForSignIn', authEmail);
+      console.log("Firebase magic link sent successfully to:", authEmail);
+      toast_("Check your email for the Firebase sign-in link.");
+      setSyncStatus("Firebase magic link sent. Check your email.");
+      return;
+    } catch (err) {
+      console.error('Firebase sendSignInLinkToEmail error:', err);
+      console.error('Firebase error code:', err?.code);
+      console.error('Firebase error message:', err?.message);
+      toast_("Unable to send Firebase sign-in link: " + (err?.message || err), "error");
+      setSyncStatus("Sign-in failed: " + (err?.message || err));
+      return;
     }
-
-    // exhausted attempts
-    console.error('signInWithOtp failed after retries', lastError);
-    const finalMsg = (String(lastError?.message || "").toLowerCase().includes("rate limit"))
-      ? "Email rate limit exceeded. Wait a few minutes or configure SMTP in Supabase settings."
-      : "Sign-in failed after retries: " + (lastError?.message || JSON.stringify(lastError));
-    toast_(finalMsg, "error");
-    setSyncStatus("Sign-in failed.");
   };
 
   const signOut = async () => {
