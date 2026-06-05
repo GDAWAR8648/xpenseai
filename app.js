@@ -671,16 +671,11 @@ function App() {
       )}
 
       <div style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.07)", padding: "0 16px", position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(12px)" }}>
-        <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", overflowX: "hidden", paddingTop: "4px" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 }}>
-            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: "800", fontSize: "15px", color: "#7c6ef5", marginRight: "12px", whiteSpace: "nowrap", paddingBottom: "4px" }}>💳 XpenseAI</div>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 }}>
-              {TABS.map(t => (
-                <button key={t.id} className="tab-pill" onClick={() => setTab(t.id)} style={{ background: "none", border: "none", color: tab === t.id ? "#7c6ef5" : "#555", fontWeight: tab === t.id ? "700" : "500", fontSize: "13px", padding: "8px 10px", cursor: "pointer", borderBottom: tab === t.id ? "2px solid #7c6ef5" : "2px solid transparent", whiteSpace: "nowrap", transition: "color .15s" }}>{t.label}</button>
-              ))}
-            </div>
+        <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "8px", overflowX: "hidden", paddingTop: "4px", paddingBottom: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flexWrap: "wrap" }}>
+            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: "800", fontSize: "15px", color: "#7c6ef5", whiteSpace: "nowrap", paddingBottom: "4px" }}>💳 XpenseAI</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0, color: "#aaa", fontSize: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0, color: "#aaa", fontSize: "12px", flexWrap: "wrap" }}>
             <span style={{ background: "rgba(124,110,245,0.12)", border: "1px solid rgba(124,110,245,0.2)", borderRadius: "999px", padding: "5px 10px", color: "#7c6ef5", fontWeight: 600 }}>{user ? "Signed in" : "Signed out"}</span>
             <span style={{ background: "rgba(0,212,132,0.08)", border: "1px solid rgba(0,212,132,0.15)", borderRadius: "999px", padding: "5px 10px", color: autoSync ? "#00d484" : "#aaa", fontWeight: 600 }}>{autoSync ? "Auto sync on" : "Auto sync off"}</span>
           </div>
@@ -1115,7 +1110,7 @@ function App() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                 <div>
                   <h2 style={{ margin: 0, fontFamily: "'Syne',sans-serif", fontSize: "18px" }}>Debug / State Backup</h2>
-                  <div style={{ fontSize: "12px", color: "#aaa", marginTop: "6px" }}>Export app data, sign in to sync across devices, or paste snapshots when state is lost.</div>
+                  <div style={{ fontSize: "12px", color: "#aaa", marginTop: "6px" }}>Export app data, sign in to sync across devices, or paste snapshots when state is lost. If Supabase isn’t working, use the manual JSON snapshot export/restore workflow below.</div>
                 </div>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <button className="btn-ghost" onClick={copyBackupSnapshot}>Copy Snapshot</button>
@@ -1509,6 +1504,43 @@ function App() {
           </div>
         </Modal>
       )}
+      <div style={{ background: "rgba(255,255,255,0.03)", borderTop: "1px solid rgba(255,255,255,0.07)", position: "sticky", bottom: 0, zIndex: 100, backdropFilter: "blur(12px)", padding: "8px 0", marginTop: "16px" }}>
+        <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "4px", alignItems: "center", padding: "0 8px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center", minWidth: 0, justifyContent: "center", width: "100%" }}>
+            {TABS.map(t => {
+              const [icon, ...nameParts] = t.label.split(" ");
+              const name = nameParts.join(" ");
+              return (
+                <button
+                  key={t.id}
+                  className="tab-pill bottom-tab icon-only"
+                  title={t.label}
+                  aria-label={t.label}
+                  onClick={() => setTab(t.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: tab === t.id ? "#7c6ef5" : "#555",
+                    fontWeight: tab === t.id ? "700" : "500",
+                    fontSize: "16px",
+                    padding: "10px 12px",
+                    cursor: "pointer",
+                    borderBottom: tab === t.id ? "2px solid #7c6ef5" : "2px solid transparent",
+                    whiteSpace: "nowrap",
+                    transition: "color .15s",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: "42px"
+                  }}>
+                  <span className="nav-icon">{icon}</span>
+                  <span className="nav-label">{name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -51,10 +51,25 @@ textarea:focus {
   background: rgba(124, 110, 245, 0.08);
 }
 
-@media (max-width: 640px) {
+.bottom-tab.icon-only .nav-label {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+@media screen and (max-width: 640px) {
   .tab-pill {
     font-size: 12px;
     padding: 8px 10px !important;
+  }
+  .bottom-tab {
+    min-width: 0 !important;
+    padding: 8px 10px !important;
+  }
+  .bottom-tab .nav-icon {
+    font-size: 18px !important;
   }
 }
 
