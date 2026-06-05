@@ -3,3 +3,6 @@ node_modules/
 *.log
 dist/
 .env
+# Sensitive credentials - never commit to Git
+config.js
+

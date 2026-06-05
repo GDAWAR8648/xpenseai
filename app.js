@@ -1,8 +1,15 @@
 const { useState, useEffect, useRef } = React;
 
-// Supabase config: replace these values with your project settings.
-const SUPABASE_URL = "https://dbvlatkeskmdiuwmaenm.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_fzmY8SFr34eiepku5SzlHQ_w0amTfDW";
+// Load configuration from config.js (not committed to Git)
+// If CONFIG is undefined, show error message
+if (typeof CONFIG === 'undefined') {
+  document.body.innerHTML = '<div style="padding: 20px; color: red; font-family: sans-serif;"><h2>Configuration Missing</h2><p>Create <code>config.js</code> from <code>config-template.js</code> and add your Firebase/Supabase credentials.</p></div>';
+  throw new Error('config.js not found or CONFIG not defined');
+}
+
+// Supabase config
+const SUPABASE_URL = CONFIG.supabase.url || "";
+const SUPABASE_ANON_KEY = CONFIG.supabase.anonKey || "";
 const isSupabaseConfigured = Boolean(
   SUPABASE_URL && SUPABASE_ANON_KEY &&
   !SUPABASE_URL.includes("YOUR_") &&
@@ -12,15 +19,15 @@ const supabaseClient = typeof supabase !== "undefined" && isSupabaseConfigured
   ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
-// Firebase config: filled from user-provided config.
-const FIREBASE_API_KEY = "AIzaSyDOM5JDW_SctMUBs0-HJANK_ZDct_bDu60";
-const FIREBASE_AUTH_DOMAIN = "xpense-ai-b52f3.firebaseapp.com";
-const FIREBASE_DATABASE_URL = ""; // leave empty if using Firestore instead of Realtime DB
-const FIREBASE_PROJECT_ID = "xpense-ai-b52f3";
-const FIREBASE_STORAGE_BUCKET = "xpense-ai-b52f3.firebasestorage.app";
-const FIREBASE_MESSAGING_SENDER_ID = "368346251125";
-const FIREBASE_APP_ID = "1:368346251125:web:b3885cdb8e38c7518fdd3c";
-const FIREBASE_MEASUREMENT_ID = "G-LWWNQRCRPE";
+// Firebase config
+const FIREBASE_API_KEY = CONFIG.firebase.apiKey || "";
+const FIREBASE_AUTH_DOMAIN = CONFIG.firebase.authDomain || "";
+const FIREBASE_DATABASE_URL = CONFIG.firebase.databaseURL || "";
+const FIREBASE_PROJECT_ID = CONFIG.firebase.projectId || "";
+const FIREBASE_STORAGE_BUCKET = CONFIG.firebase.storageBucket || "";
+const FIREBASE_MESSAGING_SENDER_ID = CONFIG.firebase.messagingSenderId || "";
+const FIREBASE_APP_ID = CONFIG.firebase.appId || "";
+const FIREBASE_MEASUREMENT_ID = CONFIG.firebase.measurementId || "";
 const isFirebaseConfigured = Boolean(FIREBASE_API_KEY && FIREBASE_AUTH_DOMAIN && FIREBASE_PROJECT_ID && FIREBASE_APP_ID);
 
 let firebaseApp = null;
