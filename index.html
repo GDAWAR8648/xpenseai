@@ -472,7 +472,7 @@ const Field = ({ label, value, onChange, type="text", options, hint }) => (
 );
 
 // ─── MAIN ──────────────────────────────────────────────────────────────────
-export default function App() {
+ function App() {
   const [tab, setTab] = useState("dashboard");
   // Load synchronously on first render — no async race conditions
   const [expenses, setExpenses] = useState(() => loadExpenses());
