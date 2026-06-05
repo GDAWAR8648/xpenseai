@@ -12,6 +12,41 @@ const supabaseClient = typeof supabase !== "undefined" && isSupabaseConfigured
   ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
+// Firebase config: filled from user-provided config.
+const FIREBASE_API_KEY = "AIzaSyDOM5JDW_SctMUBs0-HJANK_ZDct_bDu60";
+const FIREBASE_AUTH_DOMAIN = "xpense-ai-b52f3.firebaseapp.com";
+const FIREBASE_DATABASE_URL = ""; // leave empty if using Firestore instead of Realtime DB
+const FIREBASE_PROJECT_ID = "xpense-ai-b52f3";
+const FIREBASE_STORAGE_BUCKET = "xpense-ai-b52f3.firebasestorage.app";
+const FIREBASE_MESSAGING_SENDER_ID = "368346251125";
+const FIREBASE_APP_ID = "1:368346251125:web:b3885cdb8e38c7518fdd3c";
+const FIREBASE_MEASUREMENT_ID = "G-LWWNQRCRPE";
+const isFirebaseConfigured = Boolean(FIREBASE_API_KEY && FIREBASE_AUTH_DOMAIN && FIREBASE_PROJECT_ID && FIREBASE_APP_ID);
+
+let firebaseApp = null;
+let firebaseAuth = null;
+let firebaseDb = null;
+if (typeof firebase !== "undefined" && isFirebaseConfigured) {
+  try {
+    firebaseApp = firebase.initializeApp({
+      apiKey: FIREBASE_API_KEY,
+      authDomain: FIREBASE_AUTH_DOMAIN,
+      databaseURL: FIREBASE_DATABASE_URL || undefined,
+      projectId: FIREBASE_PROJECT_ID,
+      storageBucket: FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
+      appId: FIREBASE_APP_ID,
+      measurementId: FIREBASE_MEASUREMENT_ID,
+    });
+    firebaseAuth = firebaseApp.auth();
+    firebaseDb = firebaseApp.database && firebaseApp.database();
+    try { if (firebase.analytics) firebase.analytics(); } catch (e) {}
+    console.log("Firebase initialized.");
+  } catch (err) {
+    console.warn("Firebase init failed:", err);
+  }
+}
+
 // Supabase table schema for user state storage:
 // create table user_states (
 //   id uuid primary key default gen_random_uuid(),
@@ -49,6 +84,8 @@ function App() {
   const [authEmail, setAuthEmail] = useState("");
   const [user, setUser] = useState(null);
   const [syncStatus, setSyncStatus] = useState("");
+  const [authProvider, setAuthProvider] = useState("firebase"); // now Firebase-only
+  const [driveToken, setDriveToken] = useState(localStorage.getItem("drive_access_token") || "");
   const [autoSync, setAutoSync] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState(null);
@@ -64,20 +101,54 @@ function App() {
   useEffect(() => { saveAccounts(accounts); }, [accounts]);
 
   useEffect(() => {
-    if (!supabaseClient) return;
-    const initAuth = async () => {
-      const { data } = await supabaseClient.auth.getSession();
-      setUser(data?.session?.user ?? null);
-      setSyncStatus(data?.session?.user ? "Supabase ready." : "Not signed in.");
-    };
-    initAuth();
+    let cleanupFns = [];
 
-    const { data: listener } = supabaseClient.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      setSyncStatus(session?.user ? "Signed in." : "Signed out.");
-    });
+    if (supabaseClient) {
+      const initAuth = async () => {
+        const { data } = await supabaseClient.auth.getSession();
+        setUser(data?.session?.user ?? null);
+        setSyncStatus(data?.session?.user ? "Supabase ready." : "Not signed in.");
+      };
+      initAuth();
 
-    return () => listener?.subscription?.unsubscribe?.();
+      const { data: listener } = supabaseClient.auth.onAuthStateChange((event, session) => {
+        setUser(session?.user ?? null);
+        setSyncStatus(session?.user ? "Signed in." : "Signed out.");
+      });
+      cleanupFns.push(() => listener?.subscription?.unsubscribe?.());
+    }
+
+    if (firebaseAuth) {
+      setUser(firebaseAuth.currentUser ?? null);
+      const unsub = firebaseAuth.onAuthStateChanged((u) => {
+        setUser(u ?? null);
+        setSyncStatus(u ? "Firebase ready." : "Signed out.");
+      });
+      cleanupFns.push(() => unsub());
+
+      if (firebaseAuth.isSignInWithEmailLink && firebaseAuth.isSignInWithEmailLink(window.location.href)) {
+        (async () => {
+          let email = localStorage.getItem('emailForSignIn') || "";
+          if (!email) {
+            email = window.prompt('Enter your email to complete Firebase sign-in:');
+          }
+          if (!email) {
+            setSyncStatus('Firebase email link sign-in cancelled.');
+            return;
+          }
+          try {
+            await firebaseAuth.signInWithEmailLink(email, window.location.href);
+            localStorage.removeItem('emailForSignIn');
+            setSyncStatus('Signed in via Firebase email link.');
+          } catch (err) {
+            console.error('Firebase email link sign-in failed:', err);
+            setSyncStatus('Firebase email link sign-in failed: ' + (err?.message || err));
+          }
+        })();
+      }
+    }
+
+    return () => cleanupFns.forEach(fn => { try { fn(); } catch (e) {} });
   }, []);
 
   const toast_ = (msg, type = "success") => {
@@ -102,11 +173,29 @@ function App() {
       toast_("Enter your email before signing in.", "error");
       return;
     }
+    setSyncStatus("Sending magic link…");
+    if (authProvider === "firebase") {
+      if (!isFirebaseConfigured || !firebaseAuth) { toast_("Firebase config missing. Update app.js.", "error"); return; }
+      try {
+        const actionCodeSettings = { url: 'https://gdawar8648.github.io/xpenseai/', handleCodeInApp: true };
+        await firebaseAuth.sendSignInLinkToEmail(authEmail, actionCodeSettings);
+        // remember email to complete sign-in after redirect
+        localStorage.setItem('emailForSignIn', authEmail);
+        toast_("Check your email for the Firebase sign-in link.");
+        setSyncStatus("Firebase magic link sent. Check your email.");
+        return;
+      } catch (err) {
+        console.error('Firebase sendSignInLinkToEmail error:', err);
+        toast_("Unable to send Firebase sign-in link: " + (err?.message || err), "error");
+        setSyncStatus("Sign-in failed.");
+        return;
+      }
+    }
+    // default: supabase
     if (!isSupabaseEnabled()) {
       toast_("Supabase config is missing. Update app.js.", "error");
       return;
     }
-    setSyncStatus("Sending magic link…");
     // Exponential backoff retry with jitter for transient email rate-limit/network errors
     const maxAttempts = 5;
     const baseDelay = 1000; // ms
@@ -158,47 +247,178 @@ function App() {
   };
 
   const signOut = async () => {
-    if (!isSupabaseEnabled()) return;
-    await supabaseClient.auth.signOut();
+    // sign out from whichever provider is active
+    try {
+      if (authProvider === "firebase" && firebaseAuth) {
+        await firebaseAuth.signOut();
+      }
+      if (authProvider === "supabase" && supabaseClient && isSupabaseEnabled()) {
+        await supabaseClient.auth.signOut();
+      }
+    } catch (err) {
+      console.warn('Sign out error:', err);
+    }
     setUser(null);
     setSyncStatus("Signed out.");
     toast_("Signed out.");
   };
 
+  const signInWithFirebaseGoogle = async () => {
+    if (!isFirebaseConfigured || !firebaseAuth) { toast_("Firebase config missing.", "error"); return; }
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      const result = await firebaseAuth.signInWithPopup(provider);
+      const fbUser = result.user;
+      setUser(fbUser);
+      setSyncStatus("Signed in with Google (Firebase).");
+      toast_("Signed in.");
+    } catch (err) {
+      console.error('Firebase Google sign-in error:', err);
+      toast_("Google sign-in failed: " + (err?.message || err), "error");
+    }
+  };
+
+  const openDriveAuth = () => {
+    const CLIENT_ID = ""; // paste your Google OAuth client id here
+    const scope = encodeURIComponent('https://www.googleapis.com/auth/drive.file');
+    const redirect = encodeURIComponent(window.location.origin);
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&scope=${scope}&redirect_uri=${redirect}`;
+    window.open(url, '_blank', 'width=600,height=700');
+    toast_("Drive auth opened in a new window. If it completes, paste the access token into Drive settings.");
+  };
+
+  const saveDriveToken = (tok) => {
+    setDriveToken(tok);
+    localStorage.setItem('drive_access_token', tok);
+    toast_("Drive access token saved.");
+  };
+
   const downloadFromCloud = async () => {
     if (!user) { toast_("Sign in to download your cloud sync state.", "error"); return; }
-    if (!isSupabaseEnabled()) { toast_("Supabase config is missing.", "error"); return; }
     setIsSyncing(true);
-    const { data, error } = await supabaseClient
-      .from("user_states")
-      .select("payload, updated_at")
-      .eq("user_id", user.id)
-      .single();
-    setIsSyncing(false);
+    try {
+      if (authProvider === "firebase") {
+        if (!isFirebaseConfigured || !firebaseDb) { toast_("Firebase DB not configured.", "error"); setIsSyncing(false); return; }
+        const uid = user.uid || user.id;
+        const snap = await firebaseDb.ref(`user_states/${uid}`).once('value');
+        const data = snap.val();
+        setIsSyncing(false);
+        if (!data) { toast_("No cloud state found yet. Upload your app state first.", "error"); return; }
+        setExpenses(data.expenses || []);
+        setAccounts(data.accounts || []);
+        setSyncStatus(`Downloaded cloud state from Firebase.`);
+        toast_("Cloud state downloaded from Firebase.");
+        return;
+      }
 
-    if (error) {
-      console.error(error);
-      toast_("Unable to load cloud state.", "error");
-      return;
+      if (authProvider === "drive") {
+        // Drive uses access token stored in driveToken/localStorage
+        const token = driveToken || localStorage.getItem('drive_access_token');
+        if (!token) { toast_("No Drive access token set. Paste it in Drive settings.", "error"); setIsSyncing(false); return; }
+        try {
+          // Find file named xpenseai_sync.json in user's Drive appData or root
+          const res = await fetch('https://www.googleapis.com/drive/v3/files?q=name%3D"xpenseai_sync.json"and trashed%3Dfalse&fields=files(id,name,modifiedTime)', { headers: { Authorization: `Bearer ${token}` } });
+          const json = await res.json();
+          if (!json.files || json.files.length === 0) { toast_("No Drive sync file found.", "error"); setIsSyncing(false); return; }
+          const fileId = json.files[0].id;
+          const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+          const payload = await contentRes.json();
+          setIsSyncing(false);
+          setExpenses(payload.expenses || []);
+          setAccounts(payload.accounts || []);
+          setSyncStatus(`Downloaded cloud state from Drive.`);
+          toast_("Cloud state downloaded from Drive.");
+          return;
+        } catch (err) {
+          console.error('Drive download error:', err);
+          toast_("Drive download failed: " + (err?.message || err), "error");
+          setIsSyncing(false);
+          return;
+        }
+      }
+
+      // default: supabase
+      if (!isSupabaseEnabled()) { toast_("Supabase config is missing.", "error"); setIsSyncing(false); return; }
+      const { data, error } = await supabaseClient
+        .from("user_states")
+        .select("payload, updated_at")
+        .eq("user_id", user.id || user.uid)
+        .single();
+      setIsSyncing(false);
+
+      if (error) {
+        console.error(error);
+        toast_("Unable to load cloud state.", "error");
+        return;
+      }
+      if (!data?.payload) {
+        toast_("No cloud state found yet. Upload your app state first.", "error");
+        return;
+      }
+      setExpenses(data.payload.expenses || []);
+      setAccounts(data.payload.accounts || []);
+      setSyncStatus(`Downloaded cloud state from ${new Date(data.updated_at).toLocaleString()}.`);
+      toast_("Cloud state downloaded.");
+    } catch (err) {
+      setIsSyncing(false);
+      console.error(err);
+      toast_("Download failed: " + (err?.message || err), "error");
     }
-    if (!data?.payload) {
-      toast_("No cloud state found yet. Upload your app state first.", "error");
-      return;
-    }
-    setExpenses(data.payload.expenses || []);
-    setAccounts(data.payload.accounts || []);
-    setSyncStatus(`Downloaded cloud state from ${new Date(data.updated_at).toLocaleString()}.`);
-    toast_("Cloud state downloaded.");
   };
 
   const uploadToCloud = async () => {
     if (!user) { toast_("Sign in to upload your cloud state.", "error"); return; }
-    if (!isSupabaseEnabled()) { toast_("Supabase config is missing.", "error"); return; }
     setIsSyncing(true);
     try {
+      if (authProvider === "firebase") {
+        if (!isFirebaseConfigured || !firebaseDb) { toast_("Firebase DB not configured.", "error"); setIsSyncing(false); return; }
+        const uid = user.uid || user.id;
+        await firebaseDb.ref(`user_states/${uid}`).set(syncPayload());
+        setIsSyncing(false);
+        setSyncStatus(`Uploaded cloud state to Firebase.`);
+        toast_("Cloud state uploaded to Firebase.");
+        return;
+      }
+
+      if (authProvider === "drive") {
+        const token = driveToken || localStorage.getItem('drive_access_token');
+        if (!token) { toast_("No Drive access token set. Paste it in Drive settings.", "error"); setIsSyncing(false); return; }
+        try {
+          // create or update a file named xpenseai_sync.json in Drive
+          const payload = syncPayload();
+          // try find existing file
+          const findRes = await fetch('https://www.googleapis.com/drive/v3/files?q=name%3D"xpenseai_sync.json"and trashed%3Dfalse&fields=files(id,name)', { headers: { Authorization: `Bearer ${token}` } });
+          const findJson = await findRes.json();
+          let fileId = findJson.files && findJson.files[0] && findJson.files[0].id;
+          if (fileId) {
+            // update
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          } else {
+            // create
+            const meta = { name: 'xpenseai_sync.json' };
+            const form = new FormData();
+            const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+            form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+            form.append('file', blob);
+            await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+          }
+          setIsSyncing(false);
+          setSyncStatus('Uploaded cloud state to Drive.');
+          toast_('Cloud state uploaded to Drive.');
+          return;
+        } catch (err) {
+          console.error('Drive upload error:', err);
+          toast_('Drive upload failed: ' + (err?.message || err), 'error');
+          setIsSyncing(false);
+          return;
+        }
+      }
+
+      // default: supabase
+      if (!isSupabaseEnabled()) { toast_("Supabase config is missing.", "error"); setIsSyncing(false); return; }
       const { data, error } = await supabaseClient
         .from("user_states")
-        .upsert({ user_id: user.id, payload: syncPayload(), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+        .upsert({ user_id: user.id || user.uid, payload: syncPayload(), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
       setIsSyncing(false);
 
       if (error) {
@@ -1121,12 +1341,15 @@ function App() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "10px", alignItems: "center" }}>
                 {!user ? (
                   <>
-                    <input value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email for magic link" className="field-input" style={{ minWidth: "220px" }} />
-                    <button className="btn-primary" onClick={signInWithMagicLink}>Send Magic Link</button>
+                    <input value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email for Firebase magic link" className="field-input" style={{ minWidth: '220px' }} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn-primary" onClick={signInWithMagicLink}>Send Firebase Link</button>
+                      <button className="btn-ghost" onClick={signInWithFirebaseGoogle} style={{ borderColor: 'rgba(255,255,255,0.08)' }}>Sign in with Google</button>
+                    </div>
                   </>
                 ) : (
                   <>
-                    <div style={{ color: "#b3f0c7", fontSize: "13px" }}>Signed in as <strong>{user.email}</strong></div>
+                    <div style={{ color: '#b3f0c7', fontSize: '13px' }}>Signed in as <strong>{user.email || user.uid || user.id}</strong></div>
                     <button className="btn-ghost" onClick={signOut}>Sign Out</button>
                   </>
                 )}
