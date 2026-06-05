@@ -1,5 +1,5 @@
 const CACHE = 'xpenseai-v3';
-const CORE = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const CORE = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png', './styles.css', './helpers.js', './components.js', './app.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
