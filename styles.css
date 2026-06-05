@@ -42,6 +42,22 @@ textarea:focus {
   outline: none;
 }
 
+.tab-pill {
+  border-radius: 999px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-pill:hover {
+  background: rgba(124, 110, 245, 0.08);
+}
+
+@media (max-width: 640px) {
+  .tab-pill {
+    font-size: 12px;
+    padding: 8px 10px !important;
+  }
+}
+
 .row-hover:hover {
   background: rgba(255, 255, 255, 0.035) !important;
   cursor: pointer;

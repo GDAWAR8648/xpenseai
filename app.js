@@ -107,15 +107,54 @@ function App() {
       return;
     }
     setSyncStatus("Sending magic link…");
-    const { error } = await supabaseClient.auth.signInWithOtp({ email: authEmail });
-    if (error) {
-      console.error(error);
-      toast_("Unable to send sign-in link.", "error");
-      setSyncStatus("Sign-in failed.");
-    } else {
-      toast_("Check your email for the sign-in link.");
-      setSyncStatus("Magic link sent. Check your email.");
+    // Exponential backoff retry with jitter for transient email rate-limit/network errors
+    const maxAttempts = 5;
+    const baseDelay = 1000; // ms
+    let attempt = 0;
+    let lastError = null;
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        const redirect = window.location.origin || undefined;
+        const { error } = await supabaseClient.auth.signInWithOtp({ email: authEmail }, { redirectTo: redirect });
+        if (error) {
+          console.error("signInWithOtp error:", error);
+          lastError = error;
+          // If rate-limited (429) or network/transient, retry with backoff
+          const isRateLimit = error?.status === 429 || (String(error?.message || "").toLowerCase().includes("rate limit"));
+          const isTransient = !error?.status || (error?.status >= 500 && error?.status < 600) || isRateLimit;
+          if (!isTransient) {
+            const msg = "Unable to send sign-in link: " + (error.message || JSON.stringify(error));
+            toast_(msg, "error");
+            setSyncStatus("Sign-in failed.");
+            return;
+          }
+          // else fallthrough to retry
+        } else {
+          toast_("Check your email for the sign-in link.");
+          setSyncStatus("Magic link sent. Check your email.");
+          return;
+        }
+      } catch (err) {
+        console.error("signInWithOtp exception:", err);
+        lastError = err;
+        // treat as transient unless clearly client error
+      }
+
+      // compute backoff with jitter
+      const jitter = Math.floor(Math.random() * 300) + 100; // 100-399ms
+      const delay = Math.min(30000, baseDelay * Math.pow(2, attempt - 1)) + jitter;
+      setSyncStatus(`Retrying sign-in (${attempt}/${maxAttempts}) in ${Math.round(delay/1000)}s…`);
+      await new Promise(res => setTimeout(res, delay));
     }
+
+    // exhausted attempts
+    console.error('signInWithOtp failed after retries', lastError);
+    const finalMsg = (String(lastError?.message || "").toLowerCase().includes("rate limit"))
+      ? "Email rate limit exceeded. Wait a few minutes or configure SMTP in Supabase settings."
+      : "Sign-in failed after retries: " + (lastError?.message || JSON.stringify(lastError));
+    toast_(finalMsg, "error");
+    setSyncStatus("Sign-in failed.");
   };
 
   const signOut = async () => {
@@ -156,18 +195,27 @@ function App() {
     if (!user) { toast_("Sign in to upload your cloud state.", "error"); return; }
     if (!isSupabaseEnabled()) { toast_("Supabase config is missing.", "error"); return; }
     setIsSyncing(true);
-    const { error } = await supabaseClient
-      .from("user_states")
-      .upsert({ user_id: user.id, payload: syncPayload(), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
-    setIsSyncing(false);
+    try {
+      const { data, error } = await supabaseClient
+        .from("user_states")
+        .upsert({ user_id: user.id, payload: syncPayload(), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      setIsSyncing(false);
 
-    if (error) {
-      console.error(error);
-      toast_("Unable to upload cloud state.", "error");
-      return;
+      if (error) {
+        console.error("Supabase upload error:", error);
+        const msg = error?.message || (error?.details ? JSON.stringify(error.details) : "Unable to upload cloud state.");
+        toast_(msg, "error");
+        setSyncStatus("Upload failed.");
+        return;
+      }
+      setSyncStatus(`Uploaded cloud state at ${new Date().toLocaleString()}.`);
+      toast_("Cloud state uploaded.");
+    } catch (err) {
+      setIsSyncing(false);
+      console.error("Upload exception:", err);
+      toast_("Upload failed: " + (err?.message || err), "error");
+      setSyncStatus("Upload failed.");
     }
-    setSyncStatus(`Uploaded cloud state at ${new Date().toLocaleString()}.`);
-    toast_("Cloud state uploaded.");
   };
 
   useEffect(() => {
@@ -623,12 +671,12 @@ function App() {
       )}
 
       <div style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.07)", padding: "0 16px", position: "sticky", top: 0, zIndex: 100, backdropFilter: "blur(12px)" }}>
-        <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "4px", overflowX: "auto", paddingTop: "4px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "4px", minWidth: 0 }}>
-            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: "800", fontSize: "15px", color: "#7c6ef5", marginRight: "16px", whiteSpace: "nowrap", paddingBottom: "4px" }}>💳 XpenseAI</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 }}>
+        <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", overflowX: "hidden", paddingTop: "4px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 }}>
+            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: "800", fontSize: "15px", color: "#7c6ef5", marginRight: "12px", whiteSpace: "nowrap", paddingBottom: "4px" }}>💳 XpenseAI</div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 }}>
               {TABS.map(t => (
-                <button key={t.id} className="tab-pill" onClick={() => setTab(t.id)} style={{ background: "none", border: "none", color: tab === t.id ? "#7c6ef5" : "#555", fontWeight: tab === t.id ? "700" : "500", fontSize: "13px", padding: "10px 12px", cursor: "pointer", borderBottom: tab === t.id ? "2px solid #7c6ef5" : "2px solid transparent", whiteSpace: "nowrap", transition: "color .15s" }}>{t.label}</button>
+                <button key={t.id} className="tab-pill" onClick={() => setTab(t.id)} style={{ background: "none", border: "none", color: tab === t.id ? "#7c6ef5" : "#555", fontWeight: tab === t.id ? "700" : "500", fontSize: "13px", padding: "8px 10px", cursor: "pointer", borderBottom: tab === t.id ? "2px solid #7c6ef5" : "2px solid transparent", whiteSpace: "nowrap", transition: "color .15s" }}>{t.label}</button>
               ))}
             </div>
           </div>
