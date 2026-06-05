@@ -1,4 +1,4 @@
-const CACHE = 'xpenseai-v2';
+const CACHE = 'xpenseai-v3';
 const CORE = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
