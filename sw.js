@@ -17,7 +17,14 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   // Network-first for CDN scripts, cache-first for app files
-  const isCDN = e.request.url.includes('unpkg.com') || e.request.url.includes('cloudflare');
+  let isCDN = false;
+  try {
+    const host = new URL(e.request.url).hostname;
+    const CDN_HOSTS = new Set(['unpkg.com', 'cdnjs.cloudflare.com']);
+    isCDN = CDN_HOSTS.has(host);
+  } catch (_) {
+    isCDN = false;
+  }
   if (isCDN) {
     e.respondWith(
       fetch(e.request)
