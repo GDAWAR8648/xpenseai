@@ -27,7 +27,7 @@ jobs:
       - name: Generate config.js from GitHub Secrets
         run: |
           mkdir -p build
-          cat > build/config.js << 'EOF'
+          cat > build/config.js << EOF
           // Auto-generated from GitHub Secrets during deployment
           // DO NOT EDIT - this file is generated at build time
           const CONFIG = {
