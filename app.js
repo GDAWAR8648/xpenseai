@@ -1,71 +1,16 @@
+// app.js
 const { useState, useEffect, useRef } = React;
 
-// Load configuration from config.js (not committed to Git)
-// If CONFIG is undefined, show error message
-if (typeof CONFIG === 'undefined') {
-  document.body.innerHTML = '<div style="padding: 20px; color: red; font-family: sans-serif;"><h2>Configuration Missing</h2><p>Create <code>config.js</code> from <code>config-template.js</code> and add your Firebase/Supabase credentials.</p></div>';
-  throw new Error('config.js not found or CONFIG not defined');
-}
+// Instead of: import { auth, db, storage } from "./firebase.config.js";
 
-// Supabase config
-const SUPABASE_URL = CONFIG.supabase.url || "";
-const SUPABASE_ANON_KEY = CONFIG.supabase.anonKey || "";
-const isSupabaseConfigured = Boolean(
-  SUPABASE_URL && SUPABASE_ANON_KEY &&
-  !SUPABASE_URL.includes("YOUR_") &&
-  !SUPABASE_ANON_KEY.includes("YOUR_")
-);
-const supabaseClient = typeof supabase !== "undefined" && isSupabaseConfigured
-  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
+// Browser-storage-only mode: no Firebase, no Supabase configured right now.
+const isFirebaseConfigured = false;
+const firebaseAuth = null;
+const firebaseDb = null;
+const supabaseClient = null;
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
 
-// Firebase config
-const FIREBASE_API_KEY = CONFIG.firebase.apiKey || "";
-const FIREBASE_AUTH_DOMAIN = CONFIG.firebase.authDomain || "";
-const FIREBASE_DATABASE_URL = CONFIG.firebase.databaseURL || "";
-const FIREBASE_PROJECT_ID = CONFIG.firebase.projectId || "";
-const FIREBASE_STORAGE_BUCKET = CONFIG.firebase.storageBucket || "";
-const FIREBASE_MESSAGING_SENDER_ID = CONFIG.firebase.messagingSenderId || "";
-const FIREBASE_APP_ID = CONFIG.firebase.appId || "";
-const FIREBASE_MEASUREMENT_ID = CONFIG.firebase.measurementId || "";
-const isFirebaseConfigured = Boolean(FIREBASE_API_KEY && FIREBASE_AUTH_DOMAIN && FIREBASE_PROJECT_ID && FIREBASE_APP_ID);
-
-let firebaseApp = null;
-let firebaseAuth = null;
-let firebaseDb = null;
-if (typeof firebase !== "undefined" && isFirebaseConfigured) {
-  try {
-    firebaseApp = firebase.initializeApp({
-      apiKey: FIREBASE_API_KEY,
-      authDomain: FIREBASE_AUTH_DOMAIN,
-      databaseURL: FIREBASE_DATABASE_URL || undefined,
-      projectId: FIREBASE_PROJECT_ID,
-      storageBucket: FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
-      appId: FIREBASE_APP_ID,
-      measurementId: FIREBASE_MEASUREMENT_ID,
-    });
-    firebaseAuth = firebaseApp.auth();
-    firebaseDb = firebaseApp.database && firebaseApp.database();
-    try { if (firebase.analytics) firebase.analytics(); } catch (e) {}
-    console.log("Firebase initialized.");
-  } catch (err) {
-    console.warn("Firebase init failed:", err);
-  }
-}
-
-// Supabase table schema for user state storage:
-// create table user_states (
-//   id uuid primary key default gen_random_uuid(),
-//   user_id uuid not null unique,
-//   payload jsonb not null,
-//   updated_at timestamptz not null default now()
-// );
-// alter table user_states enable row level security;
-// create policy "Users can manage their own state" on user_states
-//   for all
-//   using (auth.uid() = user_id)
-//   with check (auth.uid() = user_id);
 
 function App() {
   const [tab, setTab] = useState("dashboard");
