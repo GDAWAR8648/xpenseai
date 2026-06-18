@@ -7,9 +7,12 @@ const { useState, useEffect, useRef } = React;
 const isFirebaseConfigured = false;
 const firebaseAuth = null;
 const firebaseDb = null;
-const supabaseClient = null;
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+// Replace your hardcoded lines with:
+const SUPABASE_URL = (typeof CONFIG !== 'undefined' && CONFIG.supabase?.url) || "";
+const SUPABASE_ANON_KEY = (typeof CONFIG !== 'undefined' && CONFIG.supabase?.anonKey) || "";
+const supabaseClient = (SUPABASE_URL && SUPABASE_ANON_KEY)
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 
 function App() {
